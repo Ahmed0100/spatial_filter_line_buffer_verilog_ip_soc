@@ -28,9 +28,10 @@ output reg [(PIXEL_SIZE*9)-1:0] o_pixel_data,
 output o_pixel_data_valid,
 output reg o_intr
     );
-    localparam PTR_WIDTH = $clog2(IMAGE_WIDTH-1);
-    localparam TOTAL_LINES_PIXELS_BIT_WIDTH = $clog2((IMAGE_WIDTH*4)-1);
-    
+    localparam PTR_WIDTH = $clog2(IMAGE_WIDTH);
+    localparam TOTAL_LINES_PIXELS_BIT_WIDTH = $clog2((IMAGE_WIDTH*4));
+    localparam INTR_DURATION = 500;
+ 
     reg [TOTAL_LINES_PIXELS_BIT_WIDTH-1:0] total_line_buffers_pixels_count;
     reg [3:0] line_buffer_data_valid;
     wire [(PIXEL_SIZE*3)-1:0] line_buffer_data_0;
@@ -44,11 +45,13 @@ output reg o_intr
 
     reg [1:0] current_wr_line_buffer_index;
     reg [1:0] current_rd_line_buffer_index;
-    reg current_state;
+    reg[1:0] current_state;
     reg line_buffers_rd_en;
 
+    reg [31:0] intr_count;
     localparam IDLE='d0,
-               READ='d1;
+               READ='d1,
+               INTR_DELAY='d2;
   
     assign o_pixel_data_valid=line_buffers_rd_en;
   
@@ -70,6 +73,7 @@ output reg o_intr
             current_state<=IDLE;
             line_buffers_rd_en <= 0;
             o_intr<=0;
+            intr_count<=0;
         end
         else 
         begin
@@ -87,10 +91,22 @@ output reg o_intr
                 begin
                     if(line_buffer_rd_pixel_ctr==IMAGE_WIDTH-1)
                     begin
-                        current_state<=IDLE;
+                        current_state<=INTR_DELAY;
                         o_intr<=1;
                         line_buffers_rd_en<=0; 
                     end
+                end
+                INTR_DELAY:
+                begin
+                    line_buffers_rd_en<=0;
+                    o_intr<=1;
+                    if(intr_count == INTR_DURATION)
+                    begin
+                        intr_count<=0;
+                        current_state<=IDLE;
+                    end
+                    else
+                        intr_count<=intr_count+1;
                 end
             endcase
         end
